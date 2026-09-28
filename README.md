@@ -1,8 +1,6 @@
-Exactly. We don't need a huge README. Keep it **simple and practical**: what the project does, architecture, and commands to deploy/run it.
 
 Use this as your `README.md`:
 
-````markdown
 # LLM Tool Calling with Amazon Nova
 
 This project demonstrates LLM tool calling using Amazon Nova, AWS Lambda, DynamoDB, and Python Boto3.
