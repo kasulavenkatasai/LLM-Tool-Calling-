@@ -127,4 +127,7 @@ Who is the current Prime Minister of India?
 * `backend.zip` is only a deployment package and is not committed to GitHub.
 * AWS credentials and secrets should never be committed.
 
-````
+  
+* short overview :
+
+This project uses Amazon Nova with tool calling to dynamically retrieve information from DynamoDB or an external API. The LLMOrchestrator Lambda receives the user's question, sends it to Nova, executes the selected tool using Python/Boto3, returns the tool result to Nova, and stores the final response in DynamoDB.
