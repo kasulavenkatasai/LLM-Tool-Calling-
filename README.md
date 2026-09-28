@@ -88,7 +88,7 @@ LLM-Tool-Calling/
 Compress-Archive -Path .\backend\index.py -DestinationPath .\backend.zip -Force
 ```
 
-### 2. Upload the backend to S3
+### 2. Upload the backend ZIP to S3
 
 ```powershell
 aws s3 cp .\backend.zip s3://YOUR-BUCKET/backend.zip
@@ -128,15 +128,3 @@ Who is the current Prime Minister of India?
 * AWS credentials and secrets should never be committed.
 
 ````
-
-That's enough. **No unnecessary theory or long documentation.**
-
-Then run:
-
-```powershell
-git add README.md
-git commit -m "Add project README"
-git push -u origin main
-````
-
-That gives your GitHub repo a clean **overview → architecture → commands → run instructions** flow.
