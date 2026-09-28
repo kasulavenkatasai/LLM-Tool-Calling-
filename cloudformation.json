@@ -1,0 +1,405 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "LLM Tool Calling Infrastructure",
+
+  "Parameters": {
+
+    "CodeBucket": {
+      "Type": "String",
+      "Description": "S3 bucket containing the Lambda deployment package"
+    },
+
+    "BackendCodeKey": {
+      "Type": "String",
+      "Default": "backend.zip",
+      "Description": "S3 key for the backend Lambda ZIP"
+    }
+  },
+
+  "Resources": {
+
+    "LLMAnswersTable": {
+      "Type": "AWS::DynamoDB::Table",
+
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ]
+      }
+    },
+
+
+    "EmployeeDetailsTable": {
+      "Type": "AWS::DynamoDB::Table",
+
+      "Properties": {
+        "TableName": "EmployeeDetails",
+        "BillingMode": "PAY_PER_REQUEST",
+
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "name",
+            "AttributeType": "S"
+          }
+        ],
+
+        "KeySchema": [
+          {
+            "AttributeName": "name",
+            "KeyType": "HASH"
+          }
+        ]
+      }
+    },
+
+
+    "WeatherDetailsTable": {
+      "Type": "AWS::DynamoDB::Table",
+
+      "Properties": {
+        "TableName": "WeatherDetails",
+        "BillingMode": "PAY_PER_REQUEST",
+
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "city",
+            "AttributeType": "S"
+          }
+        ],
+
+        "KeySchema": [
+          {
+            "AttributeName": "city",
+            "KeyType": "HASH"
+          }
+        ]
+      }
+    },
+
+
+    "BackendLambdaRole": {
+      "Type": "AWS::IAM::Role",
+
+      "Properties": {
+        "RoleName": "LLM-BackendLambda-Role",
+
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+
+          "Statement": [
+            {
+              "Effect": "Allow",
+
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+
+        "Policies": [
+          {
+            "PolicyName": "BackendLambdaPolicy",
+
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+
+              "Statement": [
+
+                {
+                  "Effect": "Allow",
+
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+
+                  "Resource": "*"
+                },
+
+
+                {
+                  "Effect": "Allow",
+
+                  "Action": [
+                    "bedrock:InvokeModel",
+                    "bedrock:Converse"
+                  ],
+
+                  "Resource": "*"
+                },
+
+
+                {
+                  "Effect": "Allow",
+
+                  "Action": [
+                    "dynamodb:GetItem"
+                  ],
+
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "EmployeeDetailsTable",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "WeatherDetailsTable",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+
+
+                {
+                  "Effect": "Allow",
+
+                  "Action": [
+                    "dynamodb:PutItem"
+                  ],
+
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "LLMAnswersTable",
+                      "Arn"
+                    ]
+                  }
+                }
+
+              ]
+            }
+          }
+        ]
+      }
+    },
+
+
+    "SeedDataRole": {
+      "Type": "AWS::IAM::Role",
+
+      "Properties": {
+
+        "RoleName": "LLM-DynamoDB-Seed-Role",
+
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+
+          "Statement": [
+            {
+              "Effect": "Allow",
+
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+
+        "Policies": [
+          {
+            "PolicyName": "SeedDataPolicy",
+
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+
+              "Statement": [
+
+                {
+                  "Effect": "Allow",
+
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+
+                  "Resource": "*"
+                },
+
+
+                {
+                  "Effect": "Allow",
+
+                  "Action": [
+                    "dynamodb:PutItem"
+                  ],
+
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "EmployeeDetailsTable",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "WeatherDetailsTable",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                }
+
+              ]
+            }
+          }
+        ]
+      }
+    },
+
+
+    "SeedDataLambda": {
+      "Type": "AWS::Lambda::Function",
+
+      "Properties": {
+
+        "Runtime": "python3.12",
+
+        "Handler": "index.lambda_handler",
+
+        "Role": {
+          "Fn::GetAtt": [
+            "SeedDataRole",
+            "Arn"
+          ]
+        },
+
+        "Timeout": 30,
+
+        "MemorySize": 128,
+
+        "Code": {
+          "ZipFile": "import boto3\nimport json\nimport urllib.request\n\n\ndynamodb = boto3.resource('dynamodb')\n\n\ndef send_response(event, context, status, data=None):\n    response_body = {\n        'Status': status,\n        'Reason': 'See CloudWatch Logs for details',\n        'PhysicalResourceId': context.log_stream_name,\n        'StackId': event['StackId'],\n        'RequestId': event['RequestId'],\n        'LogicalResourceId': event['LogicalResourceId'],\n        'Data': data or {}\n    }\n\n    body = json.dumps(response_body).encode('utf-8')\n\n    request = urllib.request.Request(\n        event['ResponseURL'],\n        data=body,\n        method='PUT',\n        headers={\n            'content-type': '',\n            'content-length': str(len(body))\n        }\n    )\n\n    with urllib.request.urlopen(request) as response:\n        response.read()\n\n\ndef lambda_handler(event, context):\n    try:\n        if event['RequestType'] == 'Delete':\n            send_response(event, context, 'SUCCESS')\n            return\n\n        employee_table = dynamodb.Table(\n            event['ResourceProperties']['EmployeeTableName']\n        )\n\n        weather_table = dynamodb.Table(\n            event['ResourceProperties']['WeatherTableName']\n        )\n\n        employees = [\n            {\n                'name': 'Sai',\n                'department': 'Cloud',\n                'salary': 600000\n            },\n            {\n                'name': 'Mani',\n                'department': 'DevOps',\n                'salary': 700000\n            },\n            {\n                'name': 'Surya',\n                'department': 'Engineering',\n                'salary': 800000\n            }\n        ]\n\n        weather = [\n            {\n                'city': 'Chennai',\n                'temperature': 32,\n                'condition': 'Cloudy'\n            },\n            {\n                'city': 'Hyderabad',\n                'temperature': 29,\n                'condition': 'Sunny'\n            },\n            {\n                'city': 'Bangalore',\n                'temperature': 25,\n                'condition': 'Cloudy'\n            },\n            {\n                'city': 'Mumbai',\n                'temperature': 30,\n                'condition': 'Rainy'\n            }\n        ]\n\n        for employee in employees:\n            employee_table.put_item(Item=employee)\n\n        for city in weather:\n            weather_table.put_item(Item=city)\n\n        send_response(\n            event,\n            context,\n            'SUCCESS',\n            {\n                'Message': 'DynamoDB tables seeded successfully'\n            }\n        )\n\n    except Exception as error:\n        print('Seed error:', str(error))\n\n        send_response(\n            event,\n            context,\n            'FAILED',\n            {\n                'Error': str(error)\n            }\n        )\n"
+        }
+      }
+    },
+
+
+    "SeedData": {
+      "Type": "Custom::SeedDynamoDB",
+
+      "Properties": {
+
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "SeedDataLambda",
+            "Arn"
+          ]
+        },
+
+        "EmployeeTableName": {
+          "Ref": "EmployeeDetailsTable"
+        },
+
+        "WeatherTableName": {
+          "Ref": "WeatherDetailsTable"
+        }
+      }
+    },
+
+
+    "LLMOrchestrator": {
+      "Type": "AWS::Lambda::Function",
+
+      "Properties": {
+
+        "FunctionName": "LLMOrchestrator",
+
+        "Runtime": "python3.12",
+
+        "Handler": "index.lambda_handler",
+
+        "Role": {
+          "Fn::GetAtt": [
+            "BackendLambdaRole",
+            "Arn"
+          ]
+        },
+
+        "Code": {
+          "S3Bucket": {
+            "Ref": "CodeBucket"
+          },
+
+          "S3Key": {
+            "Ref": "BackendCodeKey"
+          }
+        },
+
+        "Environment": {
+          "Variables": {
+            "TABLE_NAME": {
+              "Ref": "LLMAnswersTable"
+            }
+          }
+        },
+
+        "Timeout": 60,
+
+        "MemorySize": 256
+      }
+    }
+
+  },
+
+
+  "Outputs": {
+
+    "DynamoDBTableName": {
+      "Description": "DynamoDB table storing LLM answers",
+
+      "Value": {
+        "Ref": "LLMAnswersTable"
+      }
+    },
+
+
+    "EmployeeDetailsTableName": {
+      "Description": "DynamoDB table containing employee information",
+
+      "Value": {
+        "Ref": "EmployeeDetailsTable"
+      }
+    },
+
+
+    "WeatherDetailsTableName": {
+      "Description": "DynamoDB table containing weather information",
+
+      "Value": {
+        "Ref": "WeatherDetailsTable"
+      }
+    },
+
+
+    "LLMOrchestratorName": {
+      "Description": "Backend LLM orchestrator Lambda name",
+
+      "Value": {
+        "Ref": "LLMOrchestrator"
+      }
+    }
+
+  }
+}

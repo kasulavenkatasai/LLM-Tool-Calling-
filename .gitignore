@@ -1,0 +1,11 @@
+*.zip
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.aws/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
