@@ -1,5 +1,4 @@
 
-Use this as your `README.md`:
 
 # LLM Tool Calling with Amazon Nova
 
